@@ -6,7 +6,6 @@ from src.data.market import download_ticker
 from src.data.news import search_gnews
 from src.news.features import aggregate_news
 from src.features.technical import add_technical_features, FEATURE_COLUMNS
-from src.rag.retrieve import FinancialRetriever
 from src.llm.groq_client import analyze
 
 router=APIRouter()
@@ -53,6 +52,9 @@ def stock_analysis(req:AnalysisRequest):
         articles=search_gnews(req.company,max_results=10,days=req.days); news=aggregate_news(articles)
         rag=None
         if Path("data/knowledge/faiss.index").exists():
+            # Lazy-load the RAG stack only when a FAISS index is actually present.
+            # This keeps the API startup memory low enough for small Render instances.
+            from src.rag.retrieve import FinancialRetriever
             rag=FinancialRetriever().search(f"{req.company} stock investment valuation risk market",k=5)
         context={"ticker":req.ticker,"company":req.company,"latest_features":latest[FEATURE_COLUMNS].to_dict(),"xgboost_probability_positive_5d":prob,"news_summary":news,"news_articles":[{"title":a.get("title"),"publishedAt":a.get("publishedAt"),"url":a.get("url")} for a in articles],"retrieved_financial_knowledge":rag}
         return {"ticker":req.ticker,"probability_positive_5d":prob,"news":news,"analysis":analyze(context)}
